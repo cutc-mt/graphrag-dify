@@ -3,7 +3,7 @@ app:
   icon: 🤖
   icon_background: '#FFEAD5'
   mode: agent-chat
-  name: 王者荣耀agent
+  name: 王者栄耀エージェント
   use_icon_as_answer_icon: false
 kind: app
 model_config:
@@ -17,9 +17,9 @@ model_config:
       isDeleted: false
       notAuthor: false
       provider_id: 762d46de-127d-4b9b-a1cf-a4af17c37bc0
-      provider_name: 王者荣耀知识库
+      provider_name: 王者栄耀ナレッジベース
       provider_type: workflow
-      tool_label: 王者荣耀知识库
+      tool_label: 王者栄耀ナレッジベース
       tool_name: game_knowledge
       tool_parameters:
         active_docs: ''
@@ -51,9 +51,9 @@ model_config:
   more_like_this:
     enabled: false
   opening_statement: ''
-  pre_prompt: '你是王者荣耀游戏助手
+  pre_prompt: 'あなたは王者栄耀のゲームアシスタントです
 
-    你的任务是根据game_knowledge的内容回答玩家问题，参数为{“active_docs”:"{{active_docs}}"}'
+    あなたのタスクは、game_knowledgeの内容に基づいてプレイヤーの質問に答えることです。パラメータは{"active_docs":"{{active_docs}}"}です。'
   prompt_type: simple
   retriever_resource:
     enabled: true

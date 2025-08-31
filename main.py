@@ -1,114 +1,124 @@
-# 导入FastAPI
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
-import pandas as pd
+# FastAPIをインポート
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Union
-
-import tiktoken
-from graphrag.config.models.graph_rag_config import GraphRagConfig
-from graphrag.config.resolve_path import resolve_paths
-from graphrag.index.create_pipeline_config import create_pipeline_config
-from graphrag.cli.query import run_local_search
-import graphrag.api as api
-from graphrag.query.indexer_adapters import read_indexer_reports, read_indexer_text_units
-from graphrag.query.llm.oai.base import OpenAILLMImpl
-from graphrag.query.llm.oai.typing import OpenaiApiType
-from graphrag.query.structured_search.local_search.mixed_context import LocalSearchMixedContext
-from graphrag.query.structured_search.local_search.search import LocalSearch
-# import utils
-from pathlib import Path
+import os
+from neo4j import GraphDatabase
+from ms_graphrag_neo4j import MsGraphRAG
 import uvicorn
-from graphrag.query.llm.base import BaseLLM
-from graphrag.config.load_config import (
-    load_config, )
-from graphrag.storage.factory import create_storage
-from graphrag.utils.storage import _load_table_from_storage
-
+from openai import AsyncOpenAI, AsyncAzureOpenAI
 
 class SearchQuery(BaseModel):
-    active_docs: str
     query: str
 
-
-async def _resolve_parquet_files(
-    root_dir: str,
-    config: GraphRagConfig,
-    parquet_list: list[str],
-    optional_list: list[str],
-) -> dict[str, pd.DataFrame]:
-    """Read parquet files to a dataframe dict."""
-    dataframe_dict = {}
-    pipeline_config = create_pipeline_config(config)
-    storage_obj = create_storage(pipeline_config.storage)  # type: ignore
-    for parquet_file in parquet_list:
-        df_key = parquet_file.split(".")[0]
-        df_value = await _load_table_from_storage(name=parquet_file,
-                                                  storage=storage_obj)
-        dataframe_dict[df_key] = df_value
-
-    # for optional parquet files, set the dict entry to None instead of erroring out if it does not exist
-    for optional_file in optional_list:
-        file_exists = await storage_obj.has(optional_file)
-        df_key = optional_file.split(".")[0]
-        if file_exists:
-            df_value = await _load_table_from_storage(name=optional_file,
-                                                      storage=storage_obj)
-            dataframe_dict[df_key] = df_value
-        else:
-            dataframe_dict[df_key] = None
-
-    return dataframe_dict
-
-
-# 创建FastAPI实例
+# FastAPIインスタンスを作成
 app = FastAPI()
 
+# Neo4jドライバの初期化
+if not all(os.environ.get(var) for var in ["NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD"]):
+    raise ValueError("Neo4jの接続情報（NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD）が設定されていません。")
+
+driver = GraphDatabase.driver(
+    os.environ["NEO4J_URI"],
+    auth=(os.environ["NEO4J_USERNAME"], os.environ["NEO4J_PASSWORD"])
+)
 
 @app.post("/v1/search")
 async def search(search_query: SearchQuery):
-    print(search_query)
-    root_dir = f"./indexs/{search_query.active_docs}"
-    root = Path(root_dir).resolve()
-    config = load_config(root, None)
-    resolve_paths(config)
-    community_level = 2
-    response_type = "search_prompt"
-    dataframe_dict = await _resolve_parquet_files(
-        root_dir=root_dir,
-        config=config,
-        parquet_list=[
-            "create_final_nodes.parquet",
-            "create_final_community_reports.parquet",
-            "create_final_text_units.parquet",
-            "create_final_relationships.parquet",
-            "create_final_entities.parquet",
-        ],
-        optional_list=["create_final_covariates.parquet"],
-    )
-    final_nodes: pd.DataFrame = dataframe_dict["create_final_nodes"]
-    final_community_reports: pd.DataFrame = dataframe_dict[
-        "create_final_community_reports"]
-    final_text_units: pd.DataFrame = dataframe_dict["create_final_text_units"]
-    final_relationships: pd.DataFrame = dataframe_dict[
-        "create_final_relationships"]
-    final_entities: pd.DataFrame = dataframe_dict["create_final_entities"]
-    final_covariates: pd.DataFrame | None = dataframe_dict[
-        "create_final_covariates"]
-    result, context_data = await api.local_search(
-        config=config,
-        nodes=final_nodes,
-        entities=final_entities,
-        community_reports=final_community_reports,
-        text_units=final_text_units,
-        relationships=final_relationships,
-        covariates=final_covariates,
-        community_level=community_level,
-        response_type=response_type,
-        query=search_query.query,
-    )
-    return {"result": result}
+    """
+    Neo4jグラフで検索を実行し、LLMを使用して回答を生成します。
+    """
+    try:
+        # LLMクライアントの初期化
+        azure_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
+        if azure_endpoint:
+            # Azure OpenAIを使用
+            api_key = os.environ.get("AZURE_OPENAI_API_KEY")
+            api_version = os.environ.get("OPENAI_API_VERSION")
+            deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT")
+            if not all([api_key, api_version, deployment]):
+                raise ValueError("Azure OpenAIを使用するには、AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, OPENAI_API_VERSION, AZURE_OPENAI_DEPLOYMENTの環境変数が必要です。")
+            
+            llm_client = AsyncAzureOpenAI(
+                api_key=api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
+            model = deployment
+        else:
+            # 標準のOpenAIを使用
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY環境変数が必要です。")
+            llm_client = AsyncOpenAI(api_key=api_key)
+            model = "gpt-4o" # または他の希望するモデル
 
+        # MsGraphRAGのインスタンスを作成し、クライアントとモデルをモンキーパッチ
+        ms_graph = MsGraphRAG(driver=driver)
+        ms_graph._openai_client = llm_client
+        ms_graph.model = model
+
+        # 1. グラフからすべてのエンティティを取得
+        entities_result = ms_graph.query("MATCH (e:__Entity__) RETURN e.name AS name, e.summary AS summary")
+        all_entities = {item['name']: item['summary'] for item in entities_result if item['name']}
+
+        # 2. クエリ内で言及されているエンティティを見つける
+        mentioned_entities = {
+            name: summary
+            for name, summary in all_entities.items()
+            if name.lower() in search_query.query.lower()
+        }
+
+        context_str = ""
+        if mentioned_entities:
+            # 3. コンテキストを取得
+            for entity_name, summary in mentioned_entities.items():
+                context_str += f"エンティティ: {entity_name}\n概要: {summary}\n\n"
+
+                # 近隣エンティティとコミュニティの情報を取得
+                neighbor_query = """
+                MATCH (e:__Entity__ {name: $name})-->(neighbor)
+                RETURN neighbor.name AS neighbor_name, neighbor.summary AS neighbor_summary
+                """
+                neighbors = ms_graph.query(neighbor_query, params={"name": entity_name})
+                for neighbor in neighbors:
+                    context_str += f"関連エンティティ: {neighbor['neighbor_name']}\n概要: {neighbor['neighbor_summary']}\n\n"
+
+                community_query = """
+                MATCH (e:__Entity__ {name: $name})-[:IN_COMMUNITY]->(c:__Community__)
+                RETURN c.summary AS community_summary
+                """
+                communities = ms_graph.query(community_query, params={"name": entity_name})
+                for community in communities:
+                    context_str += f"コミュニティの概要: {community['community_summary']}\n\n"
+        else:
+            # 言及されているエンティティがない場合は、一般的なグラフの概要を使用
+            reports = ms_graph.query("MATCH (r:__Report__) RETURN r.report as report")
+            context_str = "\n".join([report['report'] for report in reports])
+
+        # 4. LLMで回答を生成
+        prompt = f"""
+以下のコンテキスト情報に基づいて、質問に答えてください。
+
+コンテキスト:
+{context_str}
+
+質問: {search_query.query}
+
+回答:"""
+
+        messages = [
+            {"role": "system", "content": "あなたは、提供されたコンテキストに基づいて質問に答えるアシスタントです。"},
+            {"role": "user", "content": prompt}
+        ]
+
+        response = await ms_graph.achat(messages)
+        return {"result": response.content}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'llm_client' in locals() and hasattr(llm_client, 'close'):
+            await llm_client.close()
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

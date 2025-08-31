@@ -3,7 +3,7 @@ app:
   icon: 🤖
   icon_background: '#FFEAD5'
   mode: workflow
-  name: 王者荣耀知识库
+  name: 王者栄耀ナレッジベース
   use_icon_as_answer_icon: false
 kind: app
 version: 0.1.2
@@ -61,7 +61,7 @@ workflow:
     - data:
         desc: ''
         selected: false
-        title: 开始
+        title: 開始
         type: start
         variables:
         - label: active_docs
@@ -105,7 +105,7 @@ workflow:
           max_connect_timeout: 0
           max_read_timeout: 0
           max_write_timeout: 0
-        title: HTTP 请求
+        title: HTTPリクエスト
         type: http-request
         url: http://host.docker.internal:8000/v1/search
         variables: []
@@ -130,7 +130,7 @@ workflow:
           - result
           variable: body
         selected: false
-        title: 结束
+        title: 終了
         type: end
       height: 89
       id: '1728124876395'
@@ -146,8 +146,14 @@ workflow:
       type: custom
       width: 244
     - data:
-        code: "\ndef main(body: str) -> dict:\n    import json\n    res=json.loads(body)\n\
-          \    return {\n        \"result\": res['result']\n    }\n"
+        code: "\ndef main(body: str) -> dict:
+    import json
+    res=json.loads(body)
+
+    return {
+        \"result\": res['result']
+    }
+"
         code_language: python3
         desc: ''
         outputs:
@@ -155,7 +161,7 @@ workflow:
             children: null
             type: string
         selected: false
-        title: 代码执行
+        title: コード実行
         type: code
         variables:
         - value_selector:

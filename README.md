@@ -1,45 +1,44 @@
 # graphrag-dify
-本视频时AI带路党Pro为分享视频准备[可能是第一个分享GraphRAG结合Dify使用的教程-GraphRAG实战教程2
-](https://www.bilibili.com/video/BV1ud1iY3Em1)
-将graphrag暴露为http服务给dify使用
+このビデオはAI带路党Proがビデオ共有のために準備したものです[おそらくGraphRAGとDifyを組み合わせた最初のチュートリアル-GraphRAG実践チュートリアル2](https://www.bilibili.com/video/BV1ud1iY3Em1)
+graphragをhttpサービスとして公開し、difyで使用します
 
-**注意:本仓库代码需要和graphrag源码放一起**
+**注意:このリポジトリのコードはgraphragのソースコードと一緒に配置する必要があります**
 
-### release log
+### リリースログ
 2024.12.11更新
-支持官方v0.9.0版本
-### 签出官方源码
+公式v0.9.0バージョンをサポート
+### 公式ソースコードをチェックアウト
 
 ```bash
-# clone代码
+# コードをクローン
 git clone https://github.com/microsoft/graphrag.git 
-# 进入目录
+# ディレクトリに移動
 cd graphrag
-# 切换为v0.9.0版本
+# v0.9.0バージョンに切り替え
 git checkout v0.9.0
 ```
 
-### 准备工作
+### 準備作業
 
-pyproject.toml中添加依赖包，并执行poetry install
+pyproject.tomlに依存パッケージを追加し、poetry installを実行します
 ```
 fastapi = "^0.115.0"
 uvicorn = "^0.31.0"
 asyncio = "^3.4.3"
 utils = "^1.0.2"
 ```
-### 文件存放位置
-- main.py 存放于grpahrag项目源码跟目录
-- search.py和search_prompt.py按照仓库中的目录位置覆盖graphrag的源文件
-- 将已经生成的索引存放于根目录下indexs目录中
+### ファイルの配置場所
+- main.py はgraphragプロジェクトのソースコードのルートディレクトリに配置します
+- search.pyとsearch_prompt.pyはリポジトリ内のディレクトリ構造に従ってgraphragのソースファイルを上書きします
+- 生成されたインデックスはルートディレクトリのindexsディレクトリに配置します
 
-### 测试
+### テスト
 
-- response type中增加了search_prompt参数，大家可以参考官方命令，测试是否能够正常运行
+- response typeにsearch_promptパラメータが追加されました。公式コマンドを参考に、正常に動作するかテストしてください
 
-### 启动graphrag service
+### graphragサービスの起動
 > poetry shell
 > 
 > uvicorn main:app --reload --host 0.0.0.0 --port 8000
-### dify dsl导入
-将dify的两个dsl导入，并重新把工作流发布为工具，并在agent中重新引用，具体可以参考视频
+### dify dslのインポート
+- difyの2つのdslをインポートし、ワークフローをツールとして再公開し、agentで再参照します。詳細はビデオを参照してください
